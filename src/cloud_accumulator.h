@@ -19,25 +19,54 @@ typedef boost::shared_ptr<visualizer_t> visualizer_ptr_t;
 namespace rc
 {
 
+/**
+ * Demonstration for how to create a registered point cloud map using the
+ * rc_visard.
+ */
 class CloudAccumulator
 {
 
   public:
   CloudAccumulator(visualizer_ptr_t viewer,
                    double voxelgrid_size_live,
-                   double voxelgrid_size_merged,
+                   double voxelgrid_size_final,
                    double min_distance,
                    double max_distance,
+                   std::string output_filename,
+                   bool live_only,
                    bool start_paused);
 
+  /**
+   * For each cloud
+   * - Filter by distance along the optical axis
+   * - Store filtered cloud for later saving (unless live_only)
+   * - Transform to world coordinates according to live pose
+   * - Merge with previous clouds
+   * - Apply "live" voxel grid filter on merged cloud
+   * - Update viewer with the result
+   */
   void pointCloudCallback(const pointcloud_t::ConstPtr& pointcloud);
 
+  /** Replace all saved camera poses by those in \p path */
   void trajectoryCallback(const nav_msgs::PathConstPtr& path);
 
+  /** Saves camera pose */
   void poseCallback(const geometry_msgs::PoseStampedConstPtr& current_pose);
 
-  bool mergeClouds(std_srvs::Empty::Request &req, std_srvs::Empty::Request &resp);
+  /**
+   * For all saved clouds
+   * - Merge
+   * - Voxel-grid filter
+   */
+  pointcloud_t::Ptr rebuildCloud();
 
+  /**
+   * - rebuild cloud (unless live_only) and update viewer
+   * - Save as .pcd to disk
+   */
+  bool saveFinalCloud(std_srvs::Empty::Request &req, std_srvs::Empty::Request &resp);
+
+  /** Toggle whether to ignore incoming data */
   bool togglePause(std_srvs::Empty::Request &req, std_srvs::Empty::Request &resp);
 
   private:
@@ -51,9 +80,11 @@ class CloudAccumulator
   boost::mutex merged_cloud_mutex_;
   visualizer_ptr_t viewer_;
   double voxelgrid_size_live_;
-  double voxelgrid_size_merged_;
+  double voxelgrid_size_final_;
   double min_distance_;
   double max_distance_;
+  std::string output_filename_;
+  bool live_only_;
   bool pause_;
 };
 
