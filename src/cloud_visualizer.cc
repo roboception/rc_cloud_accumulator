@@ -3,7 +3,7 @@
 namespace rc
 {
 
-CloudVisualizer::CloudVisualizer() : viewer_(new visualizer_t("Roboception Cloud Viewer"))
+CloudVisualizer::CloudVisualizer(const char* name) : viewer_(new visualizer_t(name))
 {
   viewer_->setBackgroundColor(0.2, 0.2, 0.2);//dark gray
   viewer_->addCoordinateSystem(0.1);//make a small coordinate system where the world pose is

@@ -16,7 +16,7 @@ class CloudVisualizer {
   public:
 
   ///Creates the viewer object
-  CloudVisualizer();
+  CloudVisualizer(const char* name);
 
   ///Viewer update loop, will be called when viewer thread is started
   void operator()();

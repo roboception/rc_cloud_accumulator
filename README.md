@@ -2,15 +2,15 @@ rc_cloud_accumulator
 ====================
 
 This project demonstrates how to create a registered point cloud map
-using the roboception rc_visard with the ROS driver.
+using the roboception rc_visard with the [ROS driver](http://wiki.ros.org/rc_visard_driver).
 
 What it does
 ------------
 The rc_cloud_accumulator ROS node subscribes to the following topics of the *rc_visard_driver*
 
- - /stereo/points2
- - /pose
- - /trajectory
+ - `/stereo/points2`
+ - `/pose`
+ - `/trajectory`
 
 The received information is stored, such that a registered point cloud can be
 computed and saved to disk. For performance reasons, the point clouds are preprocessed.
@@ -29,7 +29,8 @@ Known Bugs
 ----------
 
 - You have to change the view (mouse drag or mouse wheel) before the clouds are displayed
-- The window can only be closed terminating the console application (e.g., Ctrl-C)
+- On Ubuntu trusty, the window can only be closed terminating the console application (e.g., Ctrl-C).
+  Probably fixed (see [this issue](https://github.com/PointCloudLibrary/pcl/issues/172)) on newer versions.
 
 Point Cloud Filters
 -------
@@ -45,14 +46,14 @@ a minimum and maximum distance along the optical axis.
 A copy of the resulting cloud will be stored in memory for later use.
 
 The point cloud will then be transformed to the global coordinate
-frame and merged into the currently displayed *live* point cloud. To keep the
-visualization snappy, the *live* point cloud will be filtered with a voxel
-grid using the parameter *voxel_grid_size_live*.
+frame and merged into the currently displayed point cloud. To keep the
+visualization snappy, the displayed point cloud will be filtered with a voxel
+grid using the parameter *voxel_grid_size_display*.
 
 When the save_cloud service (see below) is used, the stored point clouds will
 be merged (considering pose updates received in the meantime). The result will
 also be be filtered with a voxel grid using the parameter
-*voxel_grid_size_final*.
+*voxel_grid_size_save*.
 
 
 ROS Services
@@ -60,21 +61,24 @@ ROS Services
 
 The *rc_cloud_accumulator* provides the following services
 
- - save_cloud: Register stored clouds and save them to disk
- - toggle_pause: Toggle processing of received data
+ - `/rc_cloud_accumulator/toggle_pause`: Toggle processing of received data
+ - `/rc_cloud_accumulator/save_cloud`: Register stored clouds and save them to disk.
+   The stored cloud will be displayed, but updated with the next incoming point cloud.
+   To keep the display of the stored result pause before saving.
 
 ROS Parameters
 --------------
 
-  - voxel_grid_size_live (default = 0.05m): Downsampling grid size of the point cloud in the live display. Set to zero or below to turn off.
-  - voxel_grid_size_final (default = 0.01m): Downsampling grid size of the point cloud when saving to disk. Set to zero or below to turn off.
-  - minimum_distance (default = 0.1m): Omit points closer to the rc_visard
-  - maximum_distance (default = 5.0m): Omit points closer farther from the rc_visard. Set to zero or below to turn distance filtering off.
-  - output_filename (default = "cloud.pcd")
-  - start_paused (default = false)
-  - live_only (default = false): Set to true to save memory and processing if no trajectories with corrections will be available.
+  - `voxel_grid_size_display` (default = 0.05m): Downsampling grid size of the point cloud in the live display. Set to zero or below to turn off.
+  - `voxel_grid_size_save` (default = 0.01m): Downsampling grid size of the point cloud when saving to disk. Set to zero or below to turn off.
+  - `minimum_distance` (default =  0.0m): Omit points closer to the rc_visard
+  - `maximum_distance` (default = 10.0m): Omit points closer farther from the rc_visard. Set below minimum to turn distance filtering off.
+  - `output_filename` (default = "cloud.pcd")
+  - `start_paused` (default = false)
+  - `keep_high_resolution` (default = true): Set to false to save memory and processing time.
     The original point clouds will not be stored and the point cloud saved to
     disk will be the one that is displayed. Only the voxel grid filter for the
-    *live* pose will be applied.
+    *live* pose will be applied. Also, correction of the point cloud poses via
+    the SLAM trajectory is not possible in this mode.
 
 

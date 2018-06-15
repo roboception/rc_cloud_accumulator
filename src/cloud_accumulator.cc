@@ -44,7 +44,7 @@ inline Eigen::Affine3f toAffine(const geometry_msgs::TransformStamped& tf_stampe
 }
 
 
-///Filter if size >= 0, otherwise just copy the poninter
+///Filter if size >= 0, otherwise just copy the pointer
 void voxelGridFilter(double size, pointcloud_t::Ptr input, pointcloud_t::Ptr& output)
 {
   if(size <= 0.0){ output = input; }
@@ -57,67 +57,82 @@ void voxelGridFilter(double size, pointcloud_t::Ptr input, pointcloud_t::Ptr& ou
   }
 }
 
+///Filter cloud along the optical axis (Z)
+///Filter if min < max, otherwise copy (deep, not only the pointer)
+pointcloud_t::Ptr distanceFiltered(double min, double max, const pointcloud_t::ConstPtr input)
+{
+  pointcloud_t::Ptr output(new pointcloud_t());
+  if(min >= max){ *output = *input; }
+  else
+  {
+    pcl::PassThrough<point_t> pass;
+    pass.setInputCloud(input);
+    pass.setFilterFieldName("z");
+    pass.setFilterLimits(min, max);
+    pass.filter(*output);
+  }
+  return output;
+}
 /****************************** CloudAccumulator ********************************************/
 
-CloudAccumulator::CloudAccumulator(double voxelgrid_size_live,
-                                   double voxelgrid_size_final,
+CloudAccumulator::CloudAccumulator(double voxelgrid_size_display,
+                                   double voxelgrid_size_save,
                                    double min_distance,
                                    double max_distance,
                                    std::string output_filename,
-                                   bool live_only,
+                                   bool keep_high_res,
                                    bool start_paused)
   : tf_buffer_(ros::Duration(std::numeric_limits<int>::max(), 0)),
+    num_poses_(0),
     display_cloud_(new pointcloud_t()),
-    voxelgrid_size_live_(voxelgrid_size_live),
-    voxelgrid_size_final_(voxelgrid_size_final),
+    voxelgrid_size_display_(voxelgrid_size_display),
+    voxelgrid_size_save_(voxelgrid_size_save),
     min_distance_(min_distance),
     max_distance_(max_distance),
     output_filename_(output_filename),
-    live_only_(live_only),
+    keep_high_res_(keep_high_res),
     pause_(start_paused),
+    viewer_("Roboception Cloud Viewer"),
     viewer_thread_(boost::ref(viewer_))
 {
   viewer_.addCloudToViewer(display_cloud_);//so update can be called
+  ROS_INFO("Distance filter range: %.2fm - %.2fm", min_distance_, max_distance_);
+  ROS_INFO("Voxel grid filter for display: %.3fm", voxelgrid_size_display_);
+  ROS_INFO("Voxel grid filter for saving:  %.3fm", voxelgrid_size_save_);
 }
 
 
 void CloudAccumulator::pointCloudCallback(const pointcloud_t::ConstPtr& pointcloud)
 {
   if(pause_){ return; }
-  static int counter = 1;
-  ROS_INFO_THROTTLE(10, "Received %d point cloud%s", counter, counter == 1 ? "" : "s");
+  static int counter = 0;
   ++counter;
+  ROS_INFO_THROTTLE(10, "Received %d point cloud%s", counter, counter == 1 ? "" : "s");
   double timestamp = pointcloud->header.stamp * 1e-6;//pcl stamps are in milliseconds
   ROS_DEBUG("Storing cloud (%.3f)", timestamp);
 
-  //Create the filtering object to create along the optical axis (Z)
-  pointcloud_t::Ptr distance_filtered_cloud(new pointcloud_t());
-  pcl::PassThrough<point_t> pass;
-  pass.setInputCloud(pointcloud);
-  pass.setFilterFieldName("z");
-  pass.setFilterLimits(min_distance_, max_distance_);
-  pass.filter(*distance_filtered_cloud);
-  if(!live_only_) { cloud_map_[timestamp] = distance_filtered_cloud; }//store for later corrections
+  pointcloud_t::Ptr cropped_cloud = distanceFiltered(min_distance_, max_distance_, pointcloud);
+  if(keep_high_res_) { clouds_.push_back(cropped_cloud); }//store for later corrections & saving
 
   const Eigen::Affine3f transformation = lookupTransform(timestamp);
   if(transformation.matrix()(0,0) == transformation.matrix()(0,0)) //not nan
   {
     pointcloud_t::Ptr transformed_cloud(new pointcloud_t());
-    pcl::transformPointCloud(*distance_filtered_cloud, *transformed_cloud, transformation);
+    pcl::transformPointCloud(*cropped_cloud, *transformed_cloud, transformation);
 
     boost::mutex::scoped_lock guard(display_cloud_mutex_);
     *transformed_cloud += *display_cloud_;
     //Voxelgridfilter to speedup display
-    voxelGridFilter(voxelgrid_size_live_, transformed_cloud, display_cloud_);
+    voxelGridFilter(voxelgrid_size_display_, transformed_cloud, display_cloud_);
     viewer_.updateCloudInViewer(display_cloud_);
+    ROS_INFO_ONCE("Change view to start displaying the clouds.");
   }
-  else
+  else if(num_poses_ == 0)
   {
-    ROS_INFO_THROTTLE(5, "Cannot display point cloud, the (live) camera pose is not available. "
+    ROS_INFO_THROTTLE(5,"Cannot transform current point cloud: No poses were received yet. "
                       "Is Stereo INS or SLAM running?");
-    ROS_DEBUG("No (live) camera pose available for cloud at %.3f.", timestamp);
   }
-  ROS_DEBUG("Done Storing cloud (%.3f)", timestamp);
+  else { ROS_INFO_THROTTLE(5,"Cannot transform current point cloud: Pose not (yet) received."); }
 }
 
 
@@ -126,7 +141,7 @@ void CloudAccumulator::trajectoryCallback(const nav_msgs::PathConstPtr& path)
   ROS_INFO("Received Trajectory with %zu poses", path->poses.size());
   boost::mutex::scoped_lock guard(tf_buffer_mutex_);
   tf_buffer_.clear();
-
+  num_poses_ = path->poses.size();
   for(size_t i = 0; i < path->poses.size(); ++i)
   //for(const geometry_msgs::PoseStamped& pose : path->poses)
   {
@@ -141,6 +156,7 @@ void CloudAccumulator::poseCallback(const geometry_msgs::PoseStampedConstPtr& cu
   ROS_INFO_ONCE("Received first live pose");
   boost::mutex::scoped_lock guard(tf_buffer_mutex_);
   tf_buffer_.setTransform(myPoseStampedMsgToTF(*current_pose), "current_pose");
+  ++num_poses_;
 }
 
 
@@ -169,35 +185,37 @@ pointcloud_t::Ptr CloudAccumulator::rebuildCloud()
   ROS_INFO("(Re-)merging all stored clouds with latest poses.");
   int counter = 0;
   pointcloud_t::Ptr merged(new pointcloud_t());
-  for(std::map<double, pointcloud_t::ConstPtr>::iterator it = cloud_map_.begin(); it != cloud_map_.end(); ++it)
+  for(size_t i = 0; i < clouds_.size(); ++i)
+  //for(std::map<double, pointcloud_t::ConstPtr>::iterator it = cloud_map_.begin(); it != cloud_map_.end(); ++it)
   {
-    const Eigen::Affine3f transformation = lookupTransform(it->first);
+    double timestamp = clouds_[i]->header.stamp * 1e-6;//pcl stamps are in milliseconds
+    const Eigen::Affine3f transformation = lookupTransform(timestamp);
     if(transformation.matrix()(0,0) == transformation.matrix()(0,0)) //not nan
     {
       ++counter;
       pointcloud_t transformed_cloud;
-      pcl::transformPointCloud(*(it->second), transformed_cloud, transformation);
+      pcl::transformPointCloud(*clouds_[i], transformed_cloud, transformation);
       *merged += transformed_cloud;
-      if(counter % 10 == 0){ ROS_INFO("Merged %d of %zu clouds.", counter, cloud_map_.size()); }
+      if(counter % 10 == 0){ ROS_INFO("Merged %d of %zu clouds.", counter, clouds_.size()); }
     }
-    else { ROS_DEBUG("Skipped cloud at %.3f in merge, cannot get its position", it->first); }
+    else { ROS_DEBUG("Skipped cloud at %.3f in merge, cannot get its position", timestamp); }
   }
-  ROS_INFO("Merged %d/%zu clouds.", counter, cloud_map_.size());
+  ROS_INFO("Merged %d/%zu clouds.", counter, clouds_.size());
 
   pointcloud_t::Ptr voxel_filtered(new pointcloud_t());
-  voxelGridFilter(voxelgrid_size_final_, merged, voxel_filtered);
+  voxelGridFilter(voxelgrid_size_save_, merged, voxel_filtered);
   return voxel_filtered;
 }
 
 
 bool CloudAccumulator::saveCloud(std_srvs::Empty::Request &req, std_srvs::Empty::Request &resp)
 {
-  if(!live_only_) // consider slam corrections
+  if(keep_high_res_) // consider slam corrections
   {
     pointcloud_t::Ptr merged = rebuildCloud();
     pcl::io::savePCDFileASCII(output_filename_, *merged);
 
-    //Now show the final cloud
+    //Now show the saved cloud
     //(it will quickly get downfiltered in the point cloud callback though if not paused)
     boost::mutex::scoped_lock guard(display_cloud_mutex_);
     display_cloud_ = merged;
