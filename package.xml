@@ -7,6 +7,9 @@
   <maintainer email="felix.endres@roboception.de">Felix Endres</maintainer>
   <author email="felix.endres@roboception.de">Felix Endres</author>
   <license>BSD</license>
+  <url type="website">https://wiki.ros.org/rc_cloud_accumulator</url>
+  <url type="repository">https://github.com/roboception/rc_cloud_accumulator</url>
+  <url type="bugtracker">https://github.com/roboception/rc_cloud_accumulator/issues</url>
 
 
   <buildtool_depend>catkin</buildtool_depend>
