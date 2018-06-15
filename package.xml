@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="2">
   <name>rc_cloud_accumulator</name>
-  <version>0.0.0</version>
+  <version>1.0.0</version>
   <description>A viewer for the SLAM component of roboception based on ROS and PCL</description>
 
   <maintainer email="felix.endres@roboception.de">Felix Endres</maintainer>
@@ -10,7 +10,6 @@
 
 
   <buildtool_depend>catkin</buildtool_depend>
-  <depend>rc_visard_driver</depend><!--for GetTrajectory.srv -->
   <depend>geometry_msgs</depend>
   <depend>tf2</depend>
   <depend>tf2_ros</depend>

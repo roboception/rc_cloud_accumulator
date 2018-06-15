@@ -4,6 +4,7 @@ rc_cloud_accumulator
 This project demonstrates how to create a registered point cloud map
 using the roboception rc_visard with the [ROS driver](http://wiki.ros.org/rc_visard_driver).
 
+
 What it does
 ------------
 The rc_cloud_accumulator ROS node subscribes to the following topics of the *rc_visard_driver*
@@ -24,6 +25,34 @@ into the *rc_cloud_accumulator*. The easiest way is to start the *rc_visard_driv
 with the parameter *autopublish_trajectory* set to `True` and call the service 
 */rc_visard_driver/get_trajectory*. The *rc_visard_driver* will then send the
 trajectory on */trajectory*.
+
+Building
+--------
+
+Compilation follows the standard build process of ROS. You can also do the regular cmake cycle:
+
+- `source /opt/ros/`*your-ROS-Distro*`/setup.bash`
+- `mkdir build`
+- `cd build`
+- `cmake ..`
+- `make -j3`
+
+To build a debian package replace the last two steps with
+
+- `cmake -DCATKIN_BUILD_BINARY_PACKAGE="1" -DCMAKE_INSTALL_PREFIX="/opt/ros/${ROS_DISTRO}" -DCMAKE_PREFIX_PATH="/opt/ros/${ROS_DISTRO}" -DCMAKE_BUILD_TYPE=Release ..`
+- `make -j3 package`
+- Install the package with `sudo dpkg -i rc_cloud_accumulator*.deb`
+
+Running
+-------
+
+After starting the *rc_visard_driver*, execute
+
+`rosrun rc_cloud_accumulator rc_cloud_accumulator`
+
+Example with parameter:
+
+`rosrun rc_cloud_accumulator rc_cloud_accumulator _voxel_grid_size_display:=0.01`
 
 Known Bugs
 ----------
