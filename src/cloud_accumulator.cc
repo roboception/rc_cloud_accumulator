@@ -17,19 +17,6 @@ namespace rc
 
 /****************************** Utility functions ********************************************/
 
-void addCloudToViewer(const pointcloud_t::Ptr pointcloud, visualizer_ptr_t& viewer)
-{
-  pcl::visualization::PointCloudColorHandlerRGBField<point_t> rgb(pointcloud);
-  viewer->addPointCloud<point_t>(pointcloud, rgb);
-  viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 3);
-}
-
-void updateCloudInViewer(const pointcloud_t::Ptr pointcloud, visualizer_ptr_t& viewer)
-{
-  pcl::visualization::PointCloudColorHandlerRGBField<point_t> rgb(pointcloud);
-  viewer->updatePointCloud<point_t>(pointcloud, rgb);
-}
-
 inline geometry_msgs::TransformStamped myPoseStampedMsgToTF(const geometry_msgs::PoseStamped & msg)
 {
   geometry_msgs::TransformStamped bt;
@@ -43,6 +30,7 @@ inline geometry_msgs::TransformStamped myPoseStampedMsgToTF(const geometry_msgs:
   return bt;
 }
 
+
 inline Eigen::Affine3f toAffine(const geometry_msgs::TransformStamped& tf_stamped)
 {
   const geometry_msgs::Vector3& t = tf_stamped.transform.translation;//just abbreviate
@@ -55,10 +43,23 @@ inline Eigen::Affine3f toAffine(const geometry_msgs::TransformStamped& tf_stampe
   return result;
 }
 
+
+///Filter if size >= 0, otherwise just copy the poninter
+void voxelGridFilter(double size, pointcloud_t::Ptr input, pointcloud_t::Ptr& output)
+{
+  if(size <= 0.0){ output = input; }
+  else
+  {
+    pcl::VoxelGrid<point_t> vgf;
+    vgf.setInputCloud(input);
+    vgf.setLeafSize(size, size, size);
+    vgf.filter(*output);
+  }
+}
+
 /****************************** CloudAccumulator ********************************************/
 
-CloudAccumulator::CloudAccumulator(visualizer_ptr_t viewer,
-                                   double voxelgrid_size_live,
+CloudAccumulator::CloudAccumulator(double voxelgrid_size_live,
                                    double voxelgrid_size_final,
                                    double min_distance,
                                    double max_distance,
@@ -66,18 +67,19 @@ CloudAccumulator::CloudAccumulator(visualizer_ptr_t viewer,
                                    bool live_only,
                                    bool start_paused)
   : tf_buffer_(ros::Duration(std::numeric_limits<int>::max(), 0)),
-    merged_cloud_(new pointcloud_t()),
-    viewer_(viewer),
+    display_cloud_(new pointcloud_t()),
     voxelgrid_size_live_(voxelgrid_size_live),
     voxelgrid_size_final_(voxelgrid_size_final),
     min_distance_(min_distance),
     max_distance_(max_distance),
     output_filename_(output_filename),
     live_only_(live_only),
-    pause_(start_paused)
+    pause_(start_paused),
+    viewer_thread_(boost::ref(viewer_))
 {
-  addCloudToViewer(merged_cloud_, viewer_);
+  viewer_.addCloudToViewer(display_cloud_);//so update can be called
 }
+
 
 void CloudAccumulator::pointCloudCallback(const pointcloud_t::ConstPtr& pointcloud)
 {
@@ -103,21 +105,11 @@ void CloudAccumulator::pointCloudCallback(const pointcloud_t::ConstPtr& pointclo
     pointcloud_t::Ptr transformed_cloud(new pointcloud_t());
     pcl::transformPointCloud(*distance_filtered_cloud, *transformed_cloud, transformation);
 
-    boost::mutex::scoped_lock guard(merged_cloud_mutex_);
-    *transformed_cloud += *merged_cloud_;
-    if(voxelgrid_size_live_ > 0.0)
-    {
-      //Voxelgridfilter to speedup display
-      pcl::VoxelGrid<point_t> vgf;
-      vgf.setInputCloud(transformed_cloud);
-      vgf.setLeafSize(voxelgrid_size_live_, voxelgrid_size_live_, voxelgrid_size_live_);
-      vgf.filter(*merged_cloud_);
-    }
-    else
-    {
-      merged_cloud_ = transformed_cloud;//just copy the pointer
-    }
-    updateCloudInViewer(merged_cloud_, viewer_);
+    boost::mutex::scoped_lock guard(display_cloud_mutex_);
+    *transformed_cloud += *display_cloud_;
+    //Voxelgridfilter to speedup display
+    voxelGridFilter(voxelgrid_size_live_, transformed_cloud, display_cloud_);
+    viewer_.updateCloudInViewer(display_cloud_);
   }
   else
   {
@@ -171,6 +163,7 @@ Eigen::Affine3f CloudAccumulator::lookupTransform(double timestamp)
   return invalid_result;
 }
 
+
 pointcloud_t::Ptr CloudAccumulator::rebuildCloud()
 {
   ROS_INFO("(Re-)merging all stored clouds with latest poses.");
@@ -185,27 +178,19 @@ pointcloud_t::Ptr CloudAccumulator::rebuildCloud()
       pointcloud_t transformed_cloud;
       pcl::transformPointCloud(*(it->second), transformed_cloud, transformation);
       *merged += transformed_cloud;
-      if(counter % 10){ ROS_INFO("Merged %d of %zu clouds.", counter, cloud_map_.size()); }
+      if(counter % 10 == 0){ ROS_INFO("Merged %d of %zu clouds.", counter, cloud_map_.size()); }
     }
     else { ROS_DEBUG("Skipped cloud at %.3f in merge, cannot get its position", it->first); }
   }
   ROS_INFO("Merged %d/%zu clouds.", counter, cloud_map_.size());
 
   pointcloud_t::Ptr voxel_filtered(new pointcloud_t());
-  if(voxelgrid_size_final_ > 0.0)
-  {
-    //Voxelgridfilter to minimize point redundancy
-    pcl::VoxelGrid<point_t> vgf;
-    vgf.setInputCloud(merged);
-    vgf.setLeafSize(voxelgrid_size_final_, voxelgrid_size_final_, voxelgrid_size_final_);
-    vgf.filter(*voxel_filtered);
-    ROS_INFO("Downsampled cloud with voxel grid filter of size %.3fm.", voxelgrid_size_final_);
-    return voxel_filtered;
-  }
-  else { return merged; }
+  voxelGridFilter(voxelgrid_size_final_, merged, voxel_filtered);
+  return voxel_filtered;
 }
 
-bool CloudAccumulator::saveFinalCloud(std_srvs::Empty::Request &req, std_srvs::Empty::Request &resp)
+
+bool CloudAccumulator::saveCloud(std_srvs::Empty::Request &req, std_srvs::Empty::Request &resp)
 {
   if(!live_only_) // consider slam corrections
   {
@@ -214,12 +199,11 @@ bool CloudAccumulator::saveFinalCloud(std_srvs::Empty::Request &req, std_srvs::E
 
     //Now show the final cloud
     //(it will quickly get downfiltered in the point cloud callback though if not paused)
-    boost::mutex::scoped_lock guard(merged_cloud_mutex_);
-    merged_cloud_ = merged;
-    viewer_->removeAllPointClouds();
-    addCloudToViewer(merged_cloud_, viewer_);
+    boost::mutex::scoped_lock guard(display_cloud_mutex_);
+    display_cloud_ = merged;
+    viewer_.addCloudToViewer(display_cloud_);
   }
-  else { pcl::io::savePCDFileASCII(output_filename_, *merged_cloud_); }//just save what we have
+  else { pcl::io::savePCDFileASCII(output_filename_, *display_cloud_); }//just save what we have
 
   ROS_INFO("Saved point cloud to %s", output_filename_.c_str());
   return true;

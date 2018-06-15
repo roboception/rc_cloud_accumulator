@@ -1,4 +1,5 @@
 #define PCL_NO_PRECOMPILE
+#include "cloud_visualizer.h"
 #include <tf2_ros/buffer.h>
 #include <map>
 #include <boost/thread/mutex.hpp>
@@ -9,12 +10,9 @@
 #include <pcl_ros/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
-#include <pcl/visualization/pcl_visualizer.h>
 
 typedef pcl::PointXYZRGB point_t;
 typedef pcl::PointCloud<point_t> pointcloud_t;
-typedef pcl::visualization::PCLVisualizer visualizer_t;
-typedef boost::shared_ptr<visualizer_t> visualizer_ptr_t;
 
 namespace rc
 {
@@ -27,8 +25,7 @@ class CloudAccumulator
 {
 
   public:
-  CloudAccumulator(visualizer_ptr_t viewer,
-                   double voxelgrid_size_live,
+  CloudAccumulator(double voxelgrid_size_live,
                    double voxelgrid_size_final,
                    double min_distance,
                    double max_distance,
@@ -57,6 +54,7 @@ class CloudAccumulator
    * For all saved clouds
    * - Merge
    * - Voxel-grid filter
+   * - Display
    */
   pointcloud_t::Ptr rebuildCloud();
 
@@ -64,7 +62,7 @@ class CloudAccumulator
    * - rebuild cloud (unless live_only) and update viewer
    * - Save as .pcd to disk
    */
-  bool saveFinalCloud(std_srvs::Empty::Request &req, std_srvs::Empty::Request &resp);
+  bool saveCloud(std_srvs::Empty::Request &req, std_srvs::Empty::Request &resp);
 
   /** Toggle whether to ignore incoming data */
   bool togglePause(std_srvs::Empty::Request &req, std_srvs::Empty::Request &resp);
@@ -74,18 +72,19 @@ class CloudAccumulator
 
   //Members
   std::map<double, pointcloud_t::ConstPtr> cloud_map_;
-  tf2_ros::Buffer tf_buffer_;
   boost::mutex tf_buffer_mutex_;
-  pointcloud_t::Ptr merged_cloud_;
-  boost::mutex merged_cloud_mutex_;
-  visualizer_ptr_t viewer_;
-  double voxelgrid_size_live_;
-  double voxelgrid_size_final_;
-  double min_distance_;
-  double max_distance_;
+  tf2_ros::Buffer tf_buffer_;      ///< Stores the history of poses and allows to interpolate
+  boost::mutex display_cloud_mutex_;
+  pointcloud_t::Ptr display_cloud_;///< Cloud that is displayed
+  double voxelgrid_size_live_;     ///< Filter size for the display cloud
+  double voxelgrid_size_final_;    ///< Filter size for the saved cloud
+  double min_distance_;            ///< Discard points closer than this
+  double max_distance_;            ///< Discard points farther than this
   std::string output_filename_;
-  bool live_only_;
-  bool pause_;
+  bool live_only_;                 ///< If set, do not store clouds. On save, save display cloud
+  bool pause_;                     ///< Whether to ignore input
+  CloudVisualizer viewer_;
+  boost::thread viewer_thread_;
 };
 
 }//namespace rc

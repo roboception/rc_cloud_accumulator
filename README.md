@@ -25,12 +25,19 @@ with the parameter *autopublish_trajectory* set to `True` and call the service
 */rc_visard_driver/get_trajectory*. The *rc_visard_driver* will then send the
 trajectory on */trajectory*.
 
-Filters
+Known Bugs
+----------
+
+- You have to change the view (mouse drag or mouse wheel) before the clouds are displayed
+- The window can only be closed terminating the console application (e.g., Ctrl-C)
+
+Point Cloud Filters
 -------
 
-For performance reasons the point clouds are filtered in several stages.
-The filter parameters are configurable via ROS parameters. See
-*ROS Parameters* for a detailed description of the parameters.
+For performance reasons the point clouds are by default filtered in several stages.
+The filters are parameterized via ROS parameters.
+All filters can be turned off using appropriate settings.
+See *ROS Parameters* for a detailed description of the parameters.
 
 When a point cloud is received, the points will first be filtered by
 a minimum and maximum distance along the optical axis.
@@ -59,13 +66,15 @@ The *rc_cloud_accumulator* provides the following services
 ROS Parameters
 --------------
 
-  - voxel_grid_size_live (default = 0.05m): Downsampling grid size of the point cloud in the live display
-  - voxel_grid_size_final (default = 0.01m): Downsampling grid size of the point cloud when saving to disk
+  - voxel_grid_size_live (default = 0.05m): Downsampling grid size of the point cloud in the live display. Set to zero or below to turn off.
+  - voxel_grid_size_final (default = 0.01m): Downsampling grid size of the point cloud when saving to disk. Set to zero or below to turn off.
   - minimum_distance (default = 0.1m): Omit points closer to the rc_visard
-  - maximum_distance (default = 5.0m): Omit points closer farther from the rc_visard
+  - maximum_distance (default = 5.0m): Omit points closer farther from the rc_visard. Set to zero or below to turn distance filtering off.
   - output_filename (default = "cloud.pcd")
   - start_paused (default = false)
   - live_only (default = false): Set to true to save memory and processing if no trajectories with corrections will be available.
     The original point clouds will not be stored and the point cloud saved to
     disk will be the one that is displayed. Only the voxel grid filter for the
     *live* pose will be applied.
+
+

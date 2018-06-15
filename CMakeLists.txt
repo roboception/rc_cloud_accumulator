@@ -66,7 +66,7 @@ include_directories(
 )
 
 ## Declare a C++ executable
-add_executable(rc_cloud_accumulator src/main.cc src/cloud_accumulator.cc)
+add_executable(rc_cloud_accumulator src/main.cc src/cloud_accumulator.cc src/cloud_visualizer.cc)
 target_include_directories(rc_cloud_accumulator SYSTEM PUBLIC ${EIGEN3_INCLUDE_DIR} ${PCL_INCLUDE_DIRS})
 target_link_libraries(rc_cloud_accumulator ${catkin_LIBRARIES} ${PCL_LIBRARIES})
 target_compile_options(rc_cloud_accumulator PRIVATE -Wall)
