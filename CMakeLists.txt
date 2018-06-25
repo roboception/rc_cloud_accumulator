@@ -1,4 +1,10 @@
 cmake_minimum_required(VERSION 2.8.12)
+
+# Don't set PROJECT_VERSION to empty string when no VERSION is given to project() command.
+if(POLICY CMP0048)
+  cmake_policy(SET CMP0048 OLD)
+endif()
+
 project(rc_cloud_accumulator)
 include(cmake/project_version.cmake)
 
