@@ -6,6 +6,8 @@ Changelog for package rc_cloud_accumulator
 ------------------
 
 * Properly shutdown visualization thread on exit
+* Wait 0.25s for the transformations of clouds
+* Remove -mfpu=neon on arm64 to fix ROS build
 
 1.0.2 (2018-06-25)
 ------------------
