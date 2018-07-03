@@ -1,4 +1,5 @@
 #include "cloud_visualizer.h"
+#include <ros/ros.h>
 
 namespace rc
 {
@@ -13,11 +14,14 @@ CloudVisualizer::CloudVisualizer(const char* name) : viewer_(new visualizer_t(na
                               0,0,1); //Z is up
 }
 
+void CloudVisualizer::stop(){ stop_ = true; }
+
 void CloudVisualizer::operator()()
 {
-  while(!viewer_->wasStopped())
+  while(!viewer_->wasStopped() && ros::ok())
   {
     boost::this_thread::sleep(boost::posix_time::microseconds(100000));
+    if(!ros::ok()) break;
     boost::mutex::scoped_lock guard(viewer_mutex_);
     viewer_->spinOnce();
   }

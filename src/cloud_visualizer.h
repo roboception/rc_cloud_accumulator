@@ -27,9 +27,13 @@ class CloudVisualizer {
   ///Thread-safe update to the cloud
   void updateCloudInViewer(const pointcloud_t::Ptr pointcloud);
 
+  ///Signal thread to stop the visualization loop
+  void stop();
+
   private:
 
   visualizer_ptr_t viewer_;
+  bool stop_;
   boost::mutex viewer_mutex_;
 };
 
