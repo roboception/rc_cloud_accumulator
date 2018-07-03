@@ -132,7 +132,11 @@ void CloudAccumulator::pointCloudCallback(const pointcloud_t::ConstPtr& pointclo
     ROS_INFO_THROTTLE(5,"Cannot transform current point cloud: No poses were received yet. "
                       "Is Stereo INS or SLAM running?");
   }
-  else { ROS_INFO_THROTTLE(5,"Cannot transform current point cloud: Pose not (yet) received."); }
+  else {
+    ROS_INFO_THROTTLE(5,"Cannot transform current point cloud: Pose not (yet) received\n"
+                        "Current cloud stamp: %.3f\n"
+                        "Latest pose stamp:   %.3f", timestamp, last_pose_stamp_.toSec());
+  }
 }
 
 
@@ -156,6 +160,7 @@ void CloudAccumulator::poseCallback(const geometry_msgs::PoseStampedConstPtr& cu
   ROS_INFO_ONCE("Received first live pose");
   boost::mutex::scoped_lock guard(tf_buffer_mutex_);
   tf_buffer_.setTransform(myPoseStampedMsgToTF(*current_pose), "current_pose");
+  last_pose_stamp_ = current_pose->header.stamp;
   ++num_poses_;
 }
 
@@ -163,13 +168,24 @@ void CloudAccumulator::poseCallback(const geometry_msgs::PoseStampedConstPtr& cu
 Eigen::Affine3f CloudAccumulator::lookupTransform(double timestamp)
 {
   ros::Time rosstamp; rosstamp.fromSec(timestamp);//pcl timestamp is in microsec
-  boost::mutex::scoped_lock guard(tf_buffer_mutex_);
-
-  if(tf_buffer_.canTransform("world", "camera", rosstamp)) try
+  //cannot use waitForTransform because of the concurrent use of the tf_buffer
+  try
   {
-    geometry_msgs::TransformStamped pose;
-    Eigen::Affine3f result = toAffine(tf_buffer_.lookupTransform("world", "camera", rosstamp)); //target, source
-    return result;
+    ros::Time endtime = ros::Time::now() + ros::Duration(0.25);
+    do
+    {
+      {//lock-scope
+        boost::mutex::scoped_lock guard(tf_buffer_mutex_);
+        if(tf_buffer_.canTransform("world", "camera", rosstamp))
+        {
+          geometry_msgs::TransformStamped pose;
+          Eigen::Affine3f result = toAffine(tf_buffer_.lookupTransform("world", "camera", rosstamp)); //target, source
+          return result;
+        }
+      }
+      usleep(10000);
+    }
+    while(endtime > ros::Time::now());
   }
   catch(tf2::LookupException ex) { ROS_WARN("%s", ex.what()); }
   catch(tf2::ExtrapolationException ex) {  ROS_WARN("%s", ex.what()); }

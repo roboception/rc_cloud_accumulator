@@ -86,6 +86,7 @@ class CloudAccumulator
   bool pause_;                     ///< Whether to ignore input data
   CloudVisualizer viewer_;
   boost::thread viewer_thread_;
+  ros::Time last_pose_stamp_;
 };
 
 }//namespace rc
