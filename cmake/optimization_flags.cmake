@@ -80,7 +80,7 @@ if (USE_ARMV7_CA15)
 endif ()
 
 if (USE_ARMV8_AARCH64)
-    add_definitions(-march=armv8-a -mtune=cortex-a57 -mfpu=neon)
+    add_definitions(-march=armv8-a -mtune=cortex-a57)
 endif ()
 
 if (UNROLL_LOOPS)
