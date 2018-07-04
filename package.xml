@@ -23,6 +23,8 @@
   <depend>roscpp</depend>
 
   <depend>libpcl-all-dev</depend>
+  <!-- Needed to work around https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=894656 on Debian Stretch -->
+  <depend>libvtk-qt</depend>
 
   <!-- The export tag contains other, unspecified, tags -->
   <export>
