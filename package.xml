@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="2">
   <name>rc_cloud_accumulator</name>
-  <version>1.0.3</version>
+  <version>1.0.4</version>
   <description>A viewer for the SLAM component of roboception based on ROS and PCL</description>
 
   <maintainer email="felix.endres@roboception.de">Felix Endres</maintainer>
